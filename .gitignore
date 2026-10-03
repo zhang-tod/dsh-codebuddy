@@ -1,0 +1,34 @@
+# 依赖与产物
+node_modules/
+
+# 备份文件（含陈旧配置，一律不入库）
+*.bak
+*.bak-*
+*.orig
+*.rej
+
+# 打包产物
+*.tgz
+*.tar.gz
+
+# 密钥与本机凭据 —— 绝不入库
+.env
+.env.*
+.credentials.yaml
+.credentials.yaml.*
+*.pem
+*.key
+
+# 临时/中间产物
+_tmp/
+_*.mjs
+_*.js
+_*.log
+*.log
+
+# 编辑器与系统
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+desktop.ini

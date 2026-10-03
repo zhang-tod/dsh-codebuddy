@@ -1,0 +1,163 @@
+# dsh-codebuddy — bundle patch layer
+#
+# 声明 CodeBuddy 开放平台的 LLM 路由。
+# 装上本插件后：设置 → 模型 → CodeBuddy → 填 API 密钥 → 获取模型 → 选模型即可。
+#
+# ── 为什么不需要二进制补丁（2026-10-01 实测结论）─────────────────────
+# 原补丁体系有 4+1 处改动，逐一核对后：
+#   ① UA 覆盖（fix-codebuddy.ps1 #1 / fix-codebuddy-ua.ps1）
+#      → 实测腾讯网关不校验 UA：DSH 原生 UA / openai-node / 空 UA 四种全部 200 PASS
+#      → 补丁已过时，本插件不采纳
+#   ② developer 角色 500（fix-codebuddy.ps1 #2）
+#      → 仍然成立（实测 developer 角色 400）
+#      → 改为官方配置：见下方 compat.supportsDeveloperRole: false
+#   ③ input 空值守卫（fix-codebuddy.ps1 #3）
+#      → DSH 0.2.0 上游已修复（代码已是 model.input?.includes ?? false）
+#   ④ cost 空值守卫（fix-codebuddy.ps1 #4）
+#      → DSH 0.2.0 上游已修复（代码已是 model.cost?.tiers）
+#   ⑤ reasoning 保留（fix-codebuddy.ps1 #5）
+#      → settings.yaml 在 0.1.7+ 已移除，旧改法失效
+#      → 改为官方配置：见下方 compat.requiresReasoningContentOnAssistantMessages: true
+# ─────────────────────────────────────────────────────────────
+- insert:
+    - id: llm-codebuddy
+      name: dsh-codebuddy
+      config:
+        provider: codebuddy-native
+        baseURL: https://copilot.tencent.com/v2
+        apiKeyEnv: CODEBUDDY_API_KEY
+        retryPolicy:
+          mode: normal
+          maxRetries: 5
+          retryableCodes:
+            - EMPTY_RESPONSE
+            - RATE_LIMIT
+            - SERVER
+            - TIMEOUT
+            - TRANSPORT
+          backoff:
+            initialDelayMs: 1000
+            maxDelayMs: 15000
+            jitterRatio: 0.3
+        # 模型清单：id/名称来自 2026-10-01 网关实测；contextWindow 与 inputModalities
+        # 取自腾讯 CodeBuddy 客户端自带的官方产物配置（acc-product-config-v3.json），
+        # 并用网关实测校正（详见下方各条注释）。
+        # 「获取模型」默认只重探已知清单（22 次计费请求）；深度探测需在设置页显式勾选。
+        # 注：腾讯桌面端 UI 可见的 kimi-k2.7-code 在 API 网关不存在（11102），故未收录。
+        #
+        # ⚠️ contextWindow 取官方 defaultLength（不是 maxAllowedSize/1M）：
+        #   网关硬上限实测 = 1048576 tokens（超出回 400 code 11115 "prompt is too long"）。
+        #   官方 1M 是需显式 opt-in 的 supportedLengths，我们无法在请求里选择它，
+        #   且 1M 窗口配上任何输出预算都会顶穿网关硬上限 → 留零余量 = 必然真实超限。
+        #   300000 是官方默认值，实测 800k tokens 仍稳定返回 200，余量充足。
+        models:
+          # 以下 5 个未出现在官方产物配置里 → 无证据，保守保留 131072
+          - id: auto
+            name: Auto 自动路由
+            contextWindow: 131072
+            maxTokens: 8192
+          - id: hy3-preview
+            name: Hy3 Preview
+            contextWindow: 131072
+            maxTokens: 8192
+          - id: hy3-preview-agent
+            name: Hy3 Preview Agent
+            contextWindow: 131072
+            maxTokens: 8192
+          - id: minimax-m3
+            name: MiniMax M3
+            contextWindow: 131072
+            maxTokens: 8192
+          - id: kimi-k3
+            name: Kimi K3
+            contextWindow: 131072
+            maxTokens: 8192
+          # ── 官方 defaultLength 可查的模型 ──────────────────────────
+          - id: hy4-preview
+            name: Hy4 Preview (混元4)
+            contextWindow: 300000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: hy3
+            name: Hy3 (混元3)
+            contextWindow: 192000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: deepseek-v4.1-flash
+            name: DeepSeek V4.1 Flash
+            contextWindow: 300000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: deepseek-v4-pro
+            name: DeepSeek V4 Pro
+            contextWindow: 300000
+            maxTokens: 32768
+            inputModalities: [text, image]
+          - id: deepseek-v4-flash
+            name: DeepSeek V4 Flash
+            contextWindow: 300000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: glm-5.3
+            name: GLM 5.3
+            contextWindow: 300000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: glm-5.3-flash
+            name: GLM 5.3 Flash
+            contextWindow: 300000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: glm-5.3-flashx
+            name: GLM 5.3 FlashX
+            contextWindow: 300000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: glm-5.2
+            name: GLM 5.2
+            contextWindow: 300000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: glm-5.1
+            name: GLM 5.1
+            contextWindow: 200000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          # 视觉旗舰：官方 descriptionZh「原生多模态模型」，实测看图 5/6（其余模型多为 4/4~5/6）
+          - id: glm-5v-turbo
+            name: GLM 5V Turbo (视觉)
+            contextWindow: 200000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          # ⚠️ 唯一不声明 image 的官方多模态模型：实测 4 张纯色图只答对 2 张
+          #    （blue→Orange、yellow→Pink）。声明 image 会让宿主保留图片、
+          #    失败发生在消息落库之后；这里宁可少声明（少声明只是让图片降级成占位文字）。
+          - id: minimax-m3-pay
+            name: MiniMax M3 Pay
+            contextWindow: 300000
+            maxTokens: 8192
+          - id: kimi-k2.8-preview
+            name: Kimi K2.8 Preview
+            contextWindow: 300000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: kimi-k2.7
+            name: Kimi K2.7
+            contextWindow: 256000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: kimi-k2.6
+            name: Kimi K2.6
+            contextWindow: 256000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: kimi-k2.5
+            name: Kimi K2.5
+            contextWindow: 256000
+            maxTokens: 8192
+            inputModalities: [text, image]
+          - id: step-5-preview
+            name: Step-5 Preview (阶跃)
+            contextWindow: 300000
+            maxTokens: 8192
+            inputModalities: [text, image]
