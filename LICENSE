@@ -1,6 +1,6 @@
 MIT License
 
-Copyright (c) 2026 张托德 (https://github.com/zhang-tod)
+Copyright (c) 2026 张托德 (zhang-tod)
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -19,19 +19,3 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-Third-party notices
-
-This plugin is an adapter for DeepSeek Harness and follows the adapter
-interface and conventions of the following MIT-licensed upstream packages:
-
-  @deepseek-ai/dsh-llm            Copyright (c) 2026 DeepSeek   (MIT)
-  @deepseek-ai/dsh-llm-deepseek   Copyright (c) 2026 DeepSeek   (MIT)
-  @deepseek-ai/dsh-credentials    Copyright (c) 2026 DeepSeek   (MIT)
-
-Portions of the adapter implementation (error classification, stream chunk
-shaping, retry policy wiring) were written with reference to
-@deepseek-ai/dsh-llm-deepseek, which is distributed under the MIT License.
-No source code from those packages is vendored into this repository.

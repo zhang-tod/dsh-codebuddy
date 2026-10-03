@@ -208,7 +208,7 @@ Coverage: SSE parsing edge cases (CRLF split across chunks, multi-line `data:`, 
 
 ## License
 
-[MIT](LICENSE). The upstream `@deepseek-ai/dsh-llm` family is MIT as well; see the third-party notice at the end of `LICENSE`.
+[MIT](LICENSE). The upstream `@deepseek-ai/dsh-llm` family is MIT as well; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ---
 

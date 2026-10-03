@@ -17,7 +17,8 @@
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
-    "CHANGELOG.md"
+    "CHANGELOG.md",
+    "THIRD-PARTY-NOTICES.md"
   ],
   "scripts": {
     "test": "node --test test/index.test.mjs"

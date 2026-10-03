@@ -208,7 +208,7 @@ npm test        # 零网络、零额度的回归测试（node --test）
 
 ## 许可
 
-[MIT](LICENSE)。上游 `@deepseek-ai/dsh-llm` 系列同为 MIT，见 `LICENSE` 末尾的第三方声明。
+[MIT](LICENSE)。上游 `@deepseek-ai/dsh-llm` 系列同为 MIT，第三方声明见 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md)。
 
 ---
 
