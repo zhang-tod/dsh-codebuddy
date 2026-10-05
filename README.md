@@ -24,7 +24,7 @@
 
 | 项 | 要求 |
 |---|---|
-| DSH | 已在 `0.1.7-rc.2` 与 `0.2.0-rc.2` 上验证（依赖 `@deepseek-ai/dsh-llm` 的 `LlmAdapter` 契约） |
+| DSH | 已在 `0.1.7-rc.2` 与 `0.2.0-rc.2` 上验证（依赖 `@deepseek-ai/dsh-llm` 的 `LlmAdapter` 契约）。`peerDependencies` 范围：`>=0.1.7-rc.2 \|\| >=0.2.0-rc.1 <3.0.0-0` |
 | Node.js | `^22.19.0 \|\| >=24.0.0` |
 | 账号 | 一个[腾讯 CodeBuddy 开放平台](https://www.codebuddy.cn)账号与 API 密钥（`sk-` 或 `ck-` 开头） |
 

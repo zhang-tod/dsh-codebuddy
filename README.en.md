@@ -24,7 +24,7 @@ Connects models from the [Tencent CodeBuddy open platform](https://copilot.tence
 
 | Item | Requirement |
 |---|---|
-| DSH | Verified on `0.1.7-rc.2` and `0.2.0-rc.2` (depends on the `@deepseek-ai/dsh-llm` `LlmAdapter` contract) |
+| DSH | Verified on `0.1.7-rc.2` and `0.2.0-rc.2` (depends on the `@deepseek-ai/dsh-llm` `LlmAdapter` contract). `peerDependencies` range: `>=0.1.7-rc.2 \|\| >=0.2.0-rc.1 <3.0.0-0` |
 | Node.js | `^22.19.0 \|\| >=24.0.0` |
 | Account | A [Tencent CodeBuddy open platform](https://www.codebuddy.cn) account and API key (starts with `sk-` or `ck-`) |
 
