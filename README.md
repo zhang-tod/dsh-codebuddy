@@ -108,32 +108,32 @@ dsh plugin --profile <你的profile> add github:<owner>/dsh-codebuddy
 
 ## 内置模型清单
 
-探测失败时的兜底清单（22 条，2026-10-01 实测校准）。`contextWindow` 取官方 `defaultLength`，网关硬上限实测为 1048576 tokens。
+探测失败时的兜底清单（22 条，2026-10-01 实测校准，2026-10-04 修订 contextWindow/maxTokens）。`contextWindow` 统一为 1000000（本机既定偏好），网关硬上限实测为 1048576 tokens。
 
 | ID | 名称 | 上下文 | 最大输出 | 输入 |
 |---|---|---|---|---|
-| `auto` | Auto 自动路由 | 131072 | 8192 | 文本 |
-| `hy4-preview` | Hy4 Preview (混元4) | 300000 | 8192 | 文本 / 图片 |
-| `hy3` | Hy3 (混元3) | 192000 | 8192 | 文本 / 图片 |
-| `hy3-preview` | Hy3 Preview | 131072 | 8192 | 文本 |
-| `hy3-preview-agent` | Hy3 Preview Agent | 131072 | 8192 | 文本 |
-| `deepseek-v4.1-flash` | DeepSeek V4.1 Flash | 300000 | 8192 | 文本 / 图片 |
-| `deepseek-v4-pro` | DeepSeek V4 Pro | 300000 | 32768 | 文本 / 图片 |
-| `deepseek-v4-flash` | DeepSeek V4 Flash | 300000 | 8192 | 文本 / 图片 |
-| `glm-5.3` | GLM 5.3 | 300000 | 8192 | 文本 / 图片 |
-| `glm-5.3-flash` | GLM 5.3 Flash | 300000 | 8192 | 文本 / 图片 |
-| `glm-5.3-flashx` | GLM 5.3 FlashX | 300000 | 8192 | 文本 / 图片 |
-| `glm-5.2` | GLM 5.2 | 300000 | 8192 | 文本 / 图片 |
-| `glm-5.1` | GLM 5.1 | 200000 | 8192 | 文本 / 图片 |
-| `glm-5v-turbo` | GLM 5V Turbo (视觉) | 200000 | 8192 | 文本 / 图片 |
-| `minimax-m3` | MiniMax M3 | 131072 | 8192 | 文本 |
-| `minimax-m3-pay` | MiniMax M3 Pay | 300000 | 8192 | 文本 |
-| `kimi-k3` | Kimi K3 | 131072 | 8192 | 文本 |
-| `kimi-k2.8-preview` | Kimi K2.8 Preview | 300000 | 8192 | 文本 / 图片 |
-| `kimi-k2.7` | Kimi K2.7 | 256000 | 8192 | 文本 / 图片 |
-| `kimi-k2.6` | Kimi K2.6 | 256000 | 8192 | 文本 / 图片 |
-| `kimi-k2.5` | Kimi K2.5 | 256000 | 8192 | 文本 / 图片 |
-| `step-5-preview` | Step-5 Preview (阶跃) | 300000 | 8192 | 文本 / 图片 |
+| `auto` | Auto 自动路由 | 1000000 | 8192 | 文本 |
+| `hy4-preview` | Hy4 Preview (混元4) | 1000000 | 8192 | 文本 / 图片 |
+| `hy3` | Hy3 (混元3) | 1000000 | 8192 | 文本 / 图片 |
+| `hy3-preview` | Hy3 Preview | 1000000 | 8192 | 文本 |
+| `hy3-preview-agent` | Hy3 Preview Agent | 1000000 | 8192 | 文本 |
+| `deepseek-v4.1-flash` | DeepSeek V4.1 Flash | 1000000 | 128000 | 文本 / 图片 |
+| `deepseek-v4-pro` | DeepSeek V4 Pro | 1000000 | 32768 | 文本 / 图片 |
+| `deepseek-v4-flash` | DeepSeek V4 Flash | 1000000 | 8192 | 文本 / 图片 |
+| `glm-5.3` | GLM 5.3 | 1000000 | 8192 | 文本 / 图片 |
+| `glm-5.3-flash` | GLM 5.3 Flash | 1000000 | 8192 | 文本 / 图片 |
+| `glm-5.3-flashx` | GLM 5.3 FlashX | 1000000 | 8192 | 文本 / 图片 |
+| `glm-5.2` | GLM 5.2 | 1000000 | 8192 | 文本 / 图片 |
+| `glm-5.1` | GLM 5.1 | 1000000 | 8192 | 文本 / 图片 |
+| `glm-5v-turbo` | GLM 5V Turbo (视觉) | 1000000 | 8192 | 文本 / 图片 |
+| `minimax-m3` | MiniMax M3 | 1000000 | 8192 | 文本 |
+| `minimax-m3-pay` | MiniMax M3 Pay | 1000000 | 8192 | 文本 |
+| `kimi-k3` | Kimi K3 | 1000000 | 8192 | 文本 |
+| `kimi-k2.8-preview` | Kimi K2.8 Preview | 1000000 | 8192 | 文本 / 图片 |
+| `kimi-k2.7` | Kimi K2.7 | 1000000 | 8192 | 文本 / 图片 |
+| `kimi-k2.6` | Kimi K2.6 | 1000000 | 8192 | 文本 / 图片 |
+| `kimi-k2.5` | Kimi K2.5 | 1000000 | 8192 | 文本 / 图片 |
+| `step-5-preview` | Step-5 Preview (阶跃) | 1000000 | 8192 | 文本 / 图片 |
 
 > 模型清单会随官方变化。**清单是兜底的，「获取模型」探测的结果才是准的**（探测到的模型会在本次会话内直接进入模型选择器）。
 

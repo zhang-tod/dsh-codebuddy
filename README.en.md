@@ -108,32 +108,32 @@ Built-in protections:
 
 ## Built-in model list
 
-Fallback list used when probing fails (22 entries, calibrated against the live gateway on 2026-10-01). `contextWindow` follows the official `defaultLength`; the gateway's hard cap was measured at 1048576 tokens.
+Fallback list used when probing fails (22 entries, calibrated against the live gateway on 2026-10-01; contextWindow/maxTokens revised 2026-10-04). `contextWindow` is pinned to 1000000 (local preference); the gateway's hard cap was measured at 1048576 tokens.
 
 | ID | Name | Context | Max output | Input |
 |---|---|---|---|---|
-| `auto` | Auto router | 131072 | 8192 | text |
-| `hy4-preview` | Hy4 Preview | 300000 | 8192 | text / image |
-| `hy3` | Hy3 | 192000 | 8192 | text / image |
-| `hy3-preview` | Hy3 Preview | 131072 | 8192 | text |
-| `hy3-preview-agent` | Hy3 Preview Agent | 131072 | 8192 | text |
-| `deepseek-v4.1-flash` | DeepSeek V4.1 Flash | 300000 | 8192 | text / image |
-| `deepseek-v4-pro` | DeepSeek V4 Pro | 300000 | 32768 | text / image |
-| `deepseek-v4-flash` | DeepSeek V4 Flash | 300000 | 8192 | text / image |
-| `glm-5.3` | GLM 5.3 | 300000 | 8192 | text / image |
-| `glm-5.3-flash` | GLM 5.3 Flash | 300000 | 8192 | text / image |
-| `glm-5.3-flashx` | GLM 5.3 FlashX | 300000 | 8192 | text / image |
-| `glm-5.2` | GLM 5.2 | 300000 | 8192 | text / image |
-| `glm-5.1` | GLM 5.1 | 200000 | 8192 | text / image |
-| `glm-5v-turbo` | GLM 5V Turbo (vision) | 200000 | 8192 | text / image |
-| `minimax-m3` | MiniMax M3 | 131072 | 8192 | text |
-| `minimax-m3-pay` | MiniMax M3 Pay | 300000 | 8192 | text |
-| `kimi-k3` | Kimi K3 | 131072 | 8192 | text |
-| `kimi-k2.8-preview` | Kimi K2.8 Preview | 300000 | 8192 | text / image |
-| `kimi-k2.7` | Kimi K2.7 | 256000 | 8192 | text / image |
-| `kimi-k2.6` | Kimi K2.6 | 256000 | 8192 | text / image |
-| `kimi-k2.5` | Kimi K2.5 | 256000 | 8192 | text / image |
-| `step-5-preview` | Step-5 Preview | 300000 | 8192 | text / image |
+| `auto` | Auto router | 1000000 | 8192 | text |
+| `hy4-preview` | Hy4 Preview | 1000000 | 8192 | text / image |
+| `hy3` | Hy3 | 1000000 | 8192 | text / image |
+| `hy3-preview` | Hy3 Preview | 1000000 | 8192 | text |
+| `hy3-preview-agent` | Hy3 Preview Agent | 1000000 | 8192 | text |
+| `deepseek-v4.1-flash` | DeepSeek V4.1 Flash | 1000000 | 128000 | text / image |
+| `deepseek-v4-pro` | DeepSeek V4 Pro | 1000000 | 32768 | text / image |
+| `deepseek-v4-flash` | DeepSeek V4 Flash | 1000000 | 8192 | text / image |
+| `glm-5.3` | GLM 5.3 | 1000000 | 8192 | text / image |
+| `glm-5.3-flash` | GLM 5.3 Flash | 1000000 | 8192 | text / image |
+| `glm-5.3-flashx` | GLM 5.3 FlashX | 1000000 | 8192 | text / image |
+| `glm-5.2` | GLM 5.2 | 1000000 | 8192 | text / image |
+| `glm-5.1` | GLM 5.1 | 1000000 | 8192 | text / image |
+| `glm-5v-turbo` | GLM 5V Turbo (vision) | 1000000 | 8192 | text / image |
+| `minimax-m3` | MiniMax M3 | 1000000 | 8192 | text |
+| `minimax-m3-pay` | MiniMax M3 Pay | 1000000 | 8192 | text |
+| `kimi-k3` | Kimi K3 | 1000000 | 8192 | text |
+| `kimi-k2.8-preview` | Kimi K2.8 Preview | 1000000 | 8192 | text / image |
+| `kimi-k2.7` | Kimi K2.7 | 1000000 | 8192 | text / image |
+| `kimi-k2.6` | Kimi K2.6 | 1000000 | 8192 | text / image |
+| `kimi-k2.5` | Kimi K2.5 | 1000000 | 8192 | text / image |
+| `step-5-preview` | Step-5 Preview | 1000000 | 8192 | text / image |
 
 > The catalog drifts with official changes. **This list is only a fallback — the "Fetch models" probe is authoritative**, and discovered models enter the model picker for the current session.
 

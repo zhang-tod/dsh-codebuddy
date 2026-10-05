@@ -3,6 +3,29 @@
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.1] - 2026-10-05
+
+默认参数校准：只调整内置模型清单的声明值与对应文档，不改动接口、探测逻辑或请求构造。
+
+### 变更
+
+- **`contextWindow` 统一为 1000000**（全部 22 个模型）。此前各模型取官方产物里的
+  `defaultLength`（131072 / 192000 / 200000 / 256000 / 300000 不等）。
+  `contextWindow` 是宿主 DSH 的**本地声明** —— 决定它何时压缩上下文、何时判定溢出 ——
+  不是请求体字段，与网关侧的 `supportedLengths` 无关；实测网关硬上限 1048576 tokens，
+  1M 声明下长期运行正常。
+- **`deepseek-v4.1-flash` 的 `maxTokens` 8192 → 128000**。8192 会让长回答被截断在半途，
+  表现为「已达到输出 token 上限，发送继续才能继续」。其余模型维持 8192，
+  `deepseek-v4-pro` 维持 32768。
+- 修正 `cordis.patch.yml` 中与调整后取值自相矛盾的注释（原文称「1M 会顶穿网关硬上限，
+  故取官方 defaultLength」）。
+
+### 文档
+
+- `README.md` / `README.en.md`：内置模型清单表重算（22 行），补记两个参数的取值理由，
+  以及它们之间的约束 —— `contextWindow - reservedCompletionTokens > 0`，
+  二者之和无需小于网关硬上限。
+
 ## [1.0.0] - 2026-10-03
 
 首次公开发布。

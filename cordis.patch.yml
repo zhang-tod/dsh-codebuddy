@@ -45,88 +45,91 @@
         # 「获取模型」默认只重探已知清单（22 次计费请求）；深度探测需在设置页显式勾选。
         # 注：腾讯桌面端 UI 可见的 kimi-k2.7-code 在 API 网关不存在（11102），故未收录。
         #
-        # ⚠️ contextWindow 取官方 defaultLength（不是 maxAllowedSize/1M）：
-        #   网关硬上限实测 = 1048576 tokens（超出回 400 code 11115 "prompt is too long"）。
-        #   官方 1M 是需显式 opt-in 的 supportedLengths，我们无法在请求里选择它，
-        #   且 1M 窗口配上任何输出预算都会顶穿网关硬上限 → 留零余量 = 必然真实超限。
-        #   300000 是官方默认值，实测 800k tokens 仍稳定返回 200，余量充足。
+        # ⚠️ 2026-10-04 东哥要求：contextWindow 全部改为 1000000（此前为官方 defaultLength）。
+        #   本机历史配置（2026-10-01 备份的 profile cordis.patch.yml）即为 1M，属用户既定偏好。
+        #   另：deepseek-v4.1-flash 的 maxTokens 由 8192 改回 128000（同样取自 10-01 原值），
+        #   因为 8192 会导致长回答频繁被截断、需要用户发"继续"。
+        #   contextWindow 与 maxTokens 的约束是 contextWindow - reservedCompletionTokens > 0
+        #   （dsh-compaction-basic），二者之和不必小于网关硬上限 1048576。
+        #   注：contextWindow 是**本地声明**（决定 DSH 何时压缩/判定溢出），
+        #       不是请求体里的可选项，所以与网关的 supportedLengths 是两回事。
         models:
-          # 以下 5 个未出现在官方产物配置里 → 无证据，保守保留 131072
+          # 以下 5 个未出现在官方产物配置里（原保守值 131072，2026-10-04 统一为 1M）
           - id: auto
             name: Auto 自动路由
-            contextWindow: 131072
+            contextWindow: 1000000
             maxTokens: 8192
           - id: hy3-preview
             name: Hy3 Preview
-            contextWindow: 131072
+            contextWindow: 1000000
             maxTokens: 8192
           - id: hy3-preview-agent
             name: Hy3 Preview Agent
-            contextWindow: 131072
+            contextWindow: 1000000
             maxTokens: 8192
           - id: minimax-m3
             name: MiniMax M3
-            contextWindow: 131072
+            contextWindow: 1000000
             maxTokens: 8192
           - id: kimi-k3
             name: Kimi K3
-            contextWindow: 131072
+            contextWindow: 1000000
             maxTokens: 8192
           # ── 官方 defaultLength 可查的模型 ──────────────────────────
           - id: hy4-preview
             name: Hy4 Preview (混元4)
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: hy3
             name: Hy3 (混元3)
-            contextWindow: 192000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: deepseek-v4.1-flash
             name: DeepSeek V4.1 Flash
-            contextWindow: 300000
-            maxTokens: 8192
+            contextWindow: 1000000
+            maxTokens: 128000
             inputModalities: [text, image]
           - id: deepseek-v4-pro
             name: DeepSeek V4 Pro
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 32768
             inputModalities: [text, image]
           - id: deepseek-v4-flash
             name: DeepSeek V4 Flash
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: glm-5.3
             name: GLM 5.3
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: glm-5.3-flash
             name: GLM 5.3 Flash
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: glm-5.3-flashx
             name: GLM 5.3 FlashX
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: glm-5.2
             name: GLM 5.2
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: glm-5.1
             name: GLM 5.1
-            contextWindow: 200000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           # 视觉旗舰：官方 descriptionZh「原生多模态模型」，实测看图 5/6（其余模型多为 4/4~5/6）
           - id: glm-5v-turbo
             name: GLM 5V Turbo (视觉)
-            contextWindow: 200000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           # ⚠️ 唯一不声明 image 的官方多模态模型：实测 4 张纯色图只答对 2 张
@@ -134,30 +137,30 @@
           #    失败发生在消息落库之后；这里宁可少声明（少声明只是让图片降级成占位文字）。
           - id: minimax-m3-pay
             name: MiniMax M3 Pay
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 8192
           - id: kimi-k2.8-preview
             name: Kimi K2.8 Preview
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: kimi-k2.7
             name: Kimi K2.7
-            contextWindow: 256000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: kimi-k2.6
             name: Kimi K2.6
-            contextWindow: 256000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: kimi-k2.5
             name: Kimi K2.5
-            contextWindow: 256000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
           - id: step-5-preview
             name: Step-5 Preview (阶跃)
-            contextWindow: 300000
+            contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
