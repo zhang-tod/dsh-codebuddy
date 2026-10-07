@@ -10,14 +10,17 @@
 #      → 补丁已过时，本插件不采纳
 #   ② developer 角色 500（fix-codebuddy.ps1 #2）
 #      → 仍然成立（实测 developer 角色 400）
-#      → 改为官方配置：见下方 compat.supportsDeveloperRole: false
+#      → 改法：本适配器在代码里规避（mapMessage 把 developer 降级为 system）
+#        ⚠️ 不是配置项：`compat.supportsDeveloperRole` 属 llm-pi-ai 的协议门禁字段，
+#           DSH 核心与官方 dsh-llm-deepseek 都不读它，写在 YAML 里无效。
 #   ③ input 空值守卫（fix-codebuddy.ps1 #3）
 #      → DSH 0.2.0 上游已修复（代码已是 model.input?.includes ?? false）
 #   ④ cost 空值守卫（fix-codebuddy.ps1 #4）
 #      → DSH 0.2.0 上游已修复（代码已是 model.cost?.tiers）
 #   ⑤ reasoning 保留（fix-codebuddy.ps1 #5）
 #      → settings.yaml 在 0.1.7+ 已移除，旧改法失效
-#      → 改为官方配置：见下方 compat.requiresReasoningContentOnAssistantMessages: true
+#      → 改法：本适配器在代码里实现（mapMessage 把 reasoning 块回传为 reasoning_content）
+#        ⚠️ 同上：`compat.requiresReasoningContentOnAssistantMessages` 也是 pi-ai 字段，写这里无效。
 # ─────────────────────────────────────────────────────────────
 - insert:
     - id: llm-codebuddy

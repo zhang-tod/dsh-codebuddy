@@ -24,6 +24,7 @@ _tmp/
 _*.mjs
 _*.js
 _*.log
+_commit_msg.txt
 *.log
 
 # 编辑器与系统

@@ -167,6 +167,7 @@ dsh plugin --profile <你的profile> add github:<owner>/dsh-codebuddy
 | **`无法解析凭据 "CODEBUDDY_API_KEY"`** | 还没填 Key | 在设置页填并保存 |
 | **`网关返回空响应`** | 网关回了 200 但没有任何内容块 | 插件会按 `EMPTY_RESPONSE` 自动重试 |
 | **`响应流被截断`** | 连接中途断了（代理/网关重启） | 插件按 `TRANSPORT` 重试，不会把半截内容当完整回答 |
+| **`流式响应空闲超时`** | 连上之后网关**一个字节都不再发**（代理静默断流 / 网关卡死） | 空闲 60 秒即主动断开并按 `TRANSPORT` 重试。**不会像以前那样干等约 5 分钟**（那是 Node `fetch` 的默认 `bodyTimeout`），也不会抛出一个无法理解、且**不重试**的裸错误 |
 | **装完设置里没有 CodeBuddy** | 大概率用了 `link:` 安装 | 改用 `file:` 或手动复制（见「安装」） |
 | **模型选择器里看不到新模型** | 探测结果**只在本次会话内生效** | 重启后重新点一次「获取模型」 |
 | **`Cannot find module '@deepseek-ai/dsh-llm'`** | 插件不在 profile 的 `node_modules` 树内 | 用 `file:` 或手动复制安装 |
@@ -181,6 +182,13 @@ dsh plugin --profile <你的profile> add github:<owner>/dsh-codebuddy
 3. **深度探测的猜测清单会过时。** 38 条按命名规律猜的版本号（如 `hy5`、`deepseek-v5`）随官方更新而失效，且**默认不启用**。
 4. **模型元数据（上下文窗口 / 最大输出）是静态声明的。** 官方调整后需要更新 `cordis.patch.yml`；探测不会自动修正已收录模型的元数据。
 5. **一次「获取模型」会产生真实计费请求**（见上方成本表）。
+6. **流式空闲超时按「字节」判定，会被心跳骗过。** 看门狗判定的是「两次收到数据之间是否静默」——
+   只要网关持续吐**任意**字节（例如 SSE 注释 `: keepalive`、半截帧），计时就被重置，即使那轮回答实际已经死掉。
+   实测：完全不发字节 → 60 秒准时超时；每 200ms 发一次心跳 → 永不超时。
+   （Node `fetch` 自带的 300 秒 `bodyTimeout` 同样会被心跳骗过，所以这不是本插件的退步，是这条守卫的适用边界。）
+   若遇到「一直转圈但网关在发心跳」，请手动中断后重发。
+7. **失败等待的上界约 5.5 分钟。** 空闲超时 60 秒 × 最多 5 次重试 + 退避（累计约 30 秒）。
+   这是把「必然失败」换成「大概率自愈」的取舍：正常抖动会自愈，网关真死时会比修复前多等一点。
 
 ---
 
@@ -200,9 +208,21 @@ dsh plugin --profile <你的profile> add github:<owner>/dsh-codebuddy
 npm test        # 零网络、零额度的回归测试（node --test）
 ```
 
-测试覆盖：SSE 解析边界（CRLF 跨分片、多行 `data:`、尾帧）、块生命周期与 index 分配、工具调用参数拼接、`usage` 计数互斥、错误分类（11102 / 11115 / 14018 / 401 / 5xx）、流截断守卫、目录合并（增/减/作用域）、探测的熔断与总时限、以及一个**本地 mock 网关**端到端。
+CI：每次 push 与 PR 都会跑全量测试（`.github/workflows/ci.yml`）。
 
-> 测试必须在**已安装副本**里跑 —— `lib/index.js` 要解析 `@deepseek-ai/dsh-llm`，该包只在 DSH profile 里存在。开发时把 `lib/` 与 `test/` 同步到 `<profile>/node_modules/dsh-codebuddy/` 再跑。
+**为什么 CI 里能跑**：`lib/index.js` 顶层 import `@deepseek-ai/dsh-llm`，该包**已发布到 npm**，CI 里装它即可，无需安装整个 DSH：
+
+```bash
+npm i -D @deepseek-ai/dsh-llm@0.2.0-rc.2   # ⚠️ 必须钉版本：该包 dist-tags 的 latest 是很旧的 0.0.1-rc.1
+node --test "test/*.test.mjs"
+```
+
+> 写成 glob（**引号要保留**）而不是 `node --test test/`：Node 的 `--test` 只把**文件/glob** 当测试入口，
+> 裸目录名会被当成 CJS 入口模块去 require，直接 `MODULE_NOT_FOUND` 并记成 1 个失败测试。
+
+测试覆盖：SSE 解析边界（CRLF 跨分片、多行 `data:`、尾帧）、块生命周期与 index 分配、工具调用参数拼接、`usage` 计数互斥、错误分类（11102 / 11115 / 14018 / 401 / 5xx）、流截断守卫、**流式空闲超时**、目录合并（增/减/作用域）、探测的熔断与总时限、**模型清单双副本一致性**，以及一个**本地 mock 网关**端到端。
+
+> 在本机开发时，测试要在**已安装副本**里跑 —— `lib/index.js` 要解析的 `@deepseek-ai/dsh-llm` 是 DSH profile 提供的。把 `lib/` 与 `test/` 同步到 `<profile>/node_modules/dsh-codebuddy/` 再跑。（CI 里不需要这一步，因为依赖直接从 npm 装。）
 
 ---
 

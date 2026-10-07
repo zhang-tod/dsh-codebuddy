@@ -1,6 +1,6 @@
 {
   "name": "dsh-codebuddy",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "Unofficial third-party DSH plugin: connects Tencent CodeBuddy open platform (copilot.tencent.com) models to DeepSeek Harness. Zero source patches, paste-your-key settings page, automatic model discovery. 非官方插件：把腾讯 CodeBuddy 开放平台的模型接入 DeepSeek Harness。",
   "type": "module",
   "main": "lib/index.js",
@@ -14,6 +14,7 @@
   },
   "files": [
     "lib",
+    "test",
     "cordis.patch.yml",
     "README.md",
     "README.en.md",
@@ -21,7 +22,7 @@
     "THIRD-PARTY-NOTICES.md"
   ],
   "scripts": {
-    "test": "node --test test/index.test.mjs"
+    "test": "node --test \"test/*.test.mjs\""
   },
   "keywords": [
     "dsh-plugin",

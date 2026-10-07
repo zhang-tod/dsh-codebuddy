@@ -1,0 +1,71 @@
+# dsh-codebuddy CI —— 跑仓内回归测试（零网络、零额度、零真实密钥）
+#
+# ── 为什么这个仓库能在 CI 里跑测试（非显而易见，先说清）──────────────
+# 本插件是 **DSH 插件**，lib/index.js 顶层 `import '@deepseek-ai/dsh-llm'`。
+# 正常情形下这个裸包名只解析得到 DSH profile 里的副本 —— 所以两个测试文件都带着
+# 「复制到 <profile>/node_modules/dsh-codebuddy/ 再跑」的兜底提示，README 也这么写。
+#
+# 但 CI 里不需要那一套：**@deepseek-ai/* 已经发布在公共 npm 上**。
+# 干净目录（只放 lib/ test/ package.json）实测：
+#   npm i -D @deepseek-ai/dsh-llm@0.2.0-rc.2 --no-audit --no-fund   # ≈3 秒，11 个包
+#   node --test "test/*.test.mjs"                                   # 全绿
+# 于是 CI 直接装公开包即可，不需要 DSH、不需要 profile、不需要密钥。
+#
+# ⚠️ 版本必须**显式钉死** 0.2.0-rc.2，不能写 `@latest`：
+#   该包 dist-tags 是 latest = 0.0.1-rc.1（很旧）/ next = 0.2.0-rc.2 / alpha = 0.2.1-alpha.1。
+#   不写版本会装到 latest 那个 0.0.1-rc.1，装出来的 API 与插件要求的不是一代。
+#   （本插件 peerDependencies 声明 `>=0.1.7-rc.2 || >=0.2.0-rc.1 <3.0.0-0`，
+#     钉的这个版本正好落在支持范围内。）
+#
+# ── 两个刻意的写法（改了会出事）───────────────────────────────────
+# ① 测试命令是 `node --test "test/*.test.mjs"`，**不是** `node --test test/`。
+#    Node 的 --test 只把**文件/glob** 当测试入口；裸目录名会被当成 CJS 入口模块去
+#    require，直接 MODULE_NOT_FOUND，并被记成「1 个失败测试」（Node 22 / 24 实测一致）。
+#    引号保留是有意义的：让 node 自己展开 glob，而不是交给 shell（跨运行器确定）。
+# ② 用 `npm i` 而非 `npm ci`：本仓库**没有 package-lock.json**（.gitignore 也没拦，
+#    只是从来没有生成过），npm ci 会直接报错退出。
+#    同理 setup-node **不能**开 `cache: npm` —— 它在装依赖之前先找锁文件，找不到就失败。
+#
+# ── 测试为什么在 CI 里是安全的 ────────────────────────────────────
+# test/ 下全部用 stub（伪造 fetch / resp.body.getReader）驱动，不连真实网关：
+# 不花额度、不需要 CODEBUDDY_API_KEY、不依赖网络。
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 只读权限：跑测试不需要写回仓库（PR 来自 fork 时也安全）
+permissions:
+  contents: read
+
+# 同一分支连推多次 → 取消旧的一轮，不排队烧 runner 分钟
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    strategy:
+      # 两个 Node 大版本各自出结论：一个挂了也要看到另一个的结果
+      fail-fast: false
+      matrix:
+        # 与 package.json 的 engines.node「^22.19.0 || >=24.0.0」对齐：
+        # 声明支持哪几个大版本，就在哪几个大版本上真跑一遍。
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: ${{ matrix.node }}
+
+      - name: 安装测试期依赖（@deepseek-ai/dsh-llm）
+        run: npm i -D @deepseek-ai/dsh-llm@0.2.0-rc.2 --no-audit --no-fund
+
+      - name: 跑全部测试
+        run: node --test "test/*.test.mjs"

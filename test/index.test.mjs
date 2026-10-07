@@ -2,7 +2,9 @@
  * dsh-codebuddy 回归测试 —— 零网络、零额度。
  *
  * 运行方式（必须在**已安装副本**里跑，因为 lib/index.js 要解析 @deepseek-ai/dsh-llm）：
- *   node --test test/
+ *   node --test "test/*.test.mjs"
+ * ⚠️ 传目录（`node --test test/`）不行：Node 的 --test 只把文件/glob 当测试入口，
+ *    裸目录名会被当成 CJS 入口模块去 require，直接 MODULE_NOT_FOUND（Node 22/24 实测一致）。
  * 开发时：把 lib/ 与 test/ 同步到 profile 的 node_modules/dsh-codebuddy 再跑。
  */
 import { test } from 'node:test'
@@ -16,11 +18,11 @@ try {
   console.error('\n[test] 无法加载 ../lib/index.js：' + error.message)
   console.error('[test] 本插件是 DSH 插件，lib/index.js 顶层 import 了 @deepseek-ai/dsh-llm，')
   console.error('[test] 该包只在 DSH profile 里可解析。请在「已安装副本」中运行测试：')
-  console.error('[test]   copy lib/ test/ -> <profile>/node_modules/dsh-codebuddy/ 然后 node --test test/\n')
+  console.error('[test]   copy lib/ test/ -> <profile>/node_modules/dsh-codebuddy/ 然后 node --test "test/*.test.mjs"\n')
   throw error
 }
 const {
-  CodeBuddyAdapter, sseFrames, framePayload, classifyHttpFailure,
+  CodeBuddyAdapter, sseFrames, STREAM_IDLE_TIMEOUT_MS, LlmError, framePayload, classifyHttpFailure,
   mergeModels, rememberDiscovered, rememberAbsent, resetDiscoveryScope, discoveredModels
 } = mod.__test__
 
@@ -107,6 +109,221 @@ test('sseFrames: CRLF 跨 chunk 切分 + 尾帧 flush', async () => {
   assert.equal(framePayload(frames[0]), '{"a":1}')
   assert.equal(framePayload(frames[1]), '{"b":2}')
   assert.equal(framePayload(frames[2]), '{"c":3}', '尾帧无空行也要 flush')
+})
+
+// ── 2b. 流式空闲看门狗（本轮新增的 P1 修复）─────────────────────
+
+/**
+ * 伪造一个可观测的 reader。
+ * @param {object} opts
+ * @param {Array} [opts.chunks] - 依次返回的数据块；取尽后回落 `after`
+ * @param {boolean} [opts.never] - true = read() 永不 settle（网关半路静默）
+ * @param {number} [opts.delayMs] - 每次 read() 的延迟（模拟真实网络间隙）
+ * @param {string} [opts.after] - chunks 取尽后的行为：'done'（默认）| 'never'
+ */
+function observableReader({ chunks = [], never = false, delayMs = 0, after = 'done' } = {}) {
+  const enc = new TextEncoder()
+  const state = { reads: 0, cancels: 0, releases: 0 }
+  let i = 0
+  const reader = {
+    read() {
+      state.reads += 1
+      if (never || (i >= chunks.length && after === 'never')) return new Promise(() => {})
+      const settle = () => {
+        if (i >= chunks.length) return { done: true, value: undefined }
+        return { done: false, value: enc.encode(chunks[i++]) }
+      }
+      return delayMs > 0 ? new Promise((r) => setTimeout(() => r(settle()), delayMs)) : Promise.resolve(settle())
+    },
+    cancel() { state.cancels += 1; return Promise.resolve() },
+    releaseLock() { state.releases += 1 }
+  }
+  return { reader, state, resp: { body: { getReader: () => reader } } }
+}
+
+test('sseFrames: 网关半路静默 → 空闲超时抛 TRANSPORT（而不是干等 undici 的 303s 裸 TypeError）', async () => {
+  // 修复前：read() 永不 settle → 一直挂到 undici bodyTimeout（实测 303s）才抛裸
+  // TypeError('terminated')；它非 HarnessError，宿主归 UNKNOWN，不重试。
+  const { resp, state } = observableReader({ never: true })
+  const t0 = Date.now()
+  let thrown
+  try {
+    for await (const _frame of sseFrames(resp, { idleTimeoutMs: 200 })) void _frame
+  } catch (error) {
+    thrown = error
+  }
+  const elapsed = Date.now() - t0
+
+  assert.ok(thrown, '静默的流必须抛错，不得静默地正常结束')
+  assert.equal(thrown.code, 'TRANSPORT', '必须是可重试的 TRANSPORT（在 cordis.patch.yml 的 retryableCodes 里）')
+  assert.equal(thrown.name, 'LlmError', '必须是 HarnessError 子类，否则宿主会归 UNKNOWN 且不重试')
+  assert.match(thrown.message, /空闲超时/)
+  assert.match(thrown.message, /200ms 无数据/, '错误文案要带上实际超时值，便于排障')
+  assert.ok(elapsed >= 180 && elapsed < 3000, `应在超时附近抛出（实际 ${elapsed}ms）`)
+
+  // 不 cancel 的话，socket 会一直挂到服务端超时；重试最多 5 次 → 同时挂住多条连接
+  assert.ok(state.cancels >= 1, `超时后必须 cancel 掉 reader（实际 cancel ${state.cancels} 次）`)
+})
+
+test('parseStream: 静默流端到端也是 TRANSPORT（不只是 sseFrames 单测）', async () => {
+  // 走完整调用链：stream() → parseStream() → sseFrames()。这里直接测 parseStream，
+  // 确认 idleTimeoutMs 能从上层注入（stream() 不传 → 用默认 60s）。
+  const { resp } = observableReader({ never: true })
+  await assert.rejects(
+    () => collect(makeAdapter(), resp, { idleTimeoutMs: 200 }),
+    (e) => e.code === 'TRANSPORT' && e.name === 'LlmError',
+    '半路静默必须端到端归一成可重试的 TRANSPORT'
+  )
+})
+
+test('sseFrames: 超时是「空闲」而非「总时长」—— 持续出帧的长回答不得被误杀', async () => {
+  // 60 帧 × 每帧 30ms = 1800ms 总时长 >> 300ms 空闲超时。
+  // 若误做成总时长超时，这里必然失败。
+  const frames = Array.from({ length: 60 }, (_, k) => frame({ choices: [{ index: 0, delta: { content: String(k) }, finish_reason: '' }] }))
+  frames.push(frame({ choices: [{ index: 0, delta: {}, finish_reason: 'stop' }] }), 'data: [DONE]\n\n')
+  const { resp } = observableReader({ chunks: frames, delayMs: 30 })
+
+  const t0 = Date.now()
+  const chunks = []
+  for await (const c of makeAdapter().parseStream(resp, { idleTimeoutMs: 300 })) chunks.push(c)
+  const elapsed = Date.now() - t0
+
+  assert.ok(elapsed > 1000, `测试本身要跑够长才有意义（实际 ${elapsed}ms）`)
+  assert.equal(chunks.at(-1).type, 'finish', '持续有数据的流必须正常收尾，不能被空闲超时打断')
+  assert.equal(chunks.at(-1).reason.kind, 'stop')
+  assert.equal(chunks.filter((c) => c.type === 'text-delta').length, 60, '60 帧正文必须一帧不丢')
+})
+
+test('sseFrames: 正常收尾后不留下悬挂的空闲超时定时器', async () => {
+  // 注入的定时器按 delay 值识别；创建数与清除数必须配平，
+  // 否则长会话里每次请求都会漏一个 timer（Node 进程被拖着不退出）。
+  const DELAY = 137
+  const created = new Set()
+  const cleared = new Set()
+  const origSet = globalThis.setTimeout
+  const origClear = globalThis.clearTimeout
+  globalThis.setTimeout = (fn, ms, ...rest) => {
+    const id = origSet(fn, ms, ...rest)
+    if (ms === DELAY) created.add(id)
+    return id
+  }
+  globalThis.clearTimeout = (id) => {
+    if (created.has(id)) cleared.add(id)
+    return origClear(id)
+  }
+  try {
+    const { resp } = observableReader({ chunks: ['data: {"a":1}\n\n', 'data: [DONE]\n\n'] })
+    const frames = []
+    for await (const f of sseFrames(resp, { idleTimeoutMs: DELAY })) frames.push(f)
+    assert.equal(frames.length, 2)
+  } finally {
+    globalThis.setTimeout = origSet
+    globalThis.clearTimeout = origClear
+  }
+  assert.ok(created.size > 0, '应确实创建过空闲超时定时器（否则本测试无意义）')
+  assert.equal(cleared.size, created.size,
+    `每次 read() 后都必须 clearTimeout（创建 ${created.size} / 清除 ${cleared.size}）`)
+})
+
+test('sseFrames: (done) 与尾帧 flush 在超时改造后不变', async () => {
+  // 收尾立即 done：只读一轮就结束，定时器不得干扰正常路径
+  const { resp, state } = observableReader({ chunks: ['data: {"x":1}\n\ndata: {"y":2}'] })
+  const frames = []
+  for await (const f of sseFrames(resp, { idleTimeoutMs: 200 })) frames.push(f)
+  assert.deepEqual(frames.map(framePayload), ['{"x":1}', '{"y":2}'])
+  assert.equal(state.cancels, 1, '正常结束也应 cancel 一次回收连接（finally 原有语义保留）')
+  assert.equal(state.releases, 1, 'releaseLock 原有语义保留')
+})
+
+test('STREAM_IDLE_TIMEOUT_MS: 默认 60s（早于 undici 的 300s bodyTimeout，留出重试窗口）', () => {
+  assert.equal(STREAM_IDLE_TIMEOUT_MS, 60 * 1000)
+  assert.ok(STREAM_IDLE_TIMEOUT_MS < 300 * 1000, '必须早于 undici 默认 bodyTimeout(300s)，否则修复无意义')
+})
+
+// ── 2c. 读取失败归一化（本轮追加）─────────────────────────────
+// 与空闲超时同一条后果链：裸错误不是 HarnessError → 宿主归 UNKNOWN → 不重试。
+// 依据：dsh-llm/lib/types/adapter-failure.js:105-107 `error instanceof HarnessError ? error.code : 'UNKNOWN'`
+
+/** 造一个 read() 直接 reject 的 resp。 */
+function rejectingResp(error) {
+  const state = { cancels: 0, releases: 0 }
+  const reader = {
+    read: () => Promise.reject(error),
+    cancel: async () => { state.cancels += 1 },
+    releaseLock: () => { state.releases += 1 }
+  }
+  return { resp: { body: { getReader: () => reader } }, state }
+}
+
+/** 收集 sseFrames 抛出的错误（异步生成器不能直接 assert.rejects 迭代）。 */
+async function catchFrom(gen) {
+  try {
+    for await (const _item of gen) void _item
+    return undefined
+  } catch (error) {
+    return error
+  }
+}
+
+test('sseFrames: read() 抛裸 TypeError（undici bodyTimeout / TCP RST）→ 归一成 TRANSPORT', async () => {
+  const raw = new TypeError('terminated')
+  raw.cause = { code: 'UND_ERR_BODY_TIMEOUT' }
+  const { resp } = rejectingResp(raw)
+
+  const thrown = await catchFrom(sseFrames(resp, { idleTimeoutMs: 60_000 }))
+  assert.ok(thrown, '读取失败必须抛错')
+  assert.equal(thrown.name, 'LlmError', '必须归一成 LlmError，否则宿主归 UNKNOWN 且不重试')
+  assert.equal(thrown.code, 'TRANSPORT', 'TRANSPORT 在 cordis.patch.yml 的 retryableCodes 里 → 会被重试')
+  assert.match(thrown.message, /读取失败/)
+  assert.match(thrown.message, /terminated/, '原始 message 要带出来，便于排障')
+})
+
+test('sseFrames: read() 抛 AbortError → 同样归一成 TRANSPORT（取消语义由宿主保证）', async () => {
+  // 取消场景不靠这里的 code 区分：宿主 adapterFailureChunk 先判 signal?.aborted，
+  // 命中即走 kind:'aborted'（dsh-llm/lib/types/index.js:942），
+  // 所以包装成 TRANSPORT **不会**让用户主动取消的操作被误重试。
+  const abortErr = new Error('The operation was aborted')
+  abortErr.name = 'AbortError'
+  const { resp } = rejectingResp(abortErr)
+
+  const thrown = await catchFrom(sseFrames(resp, { idleTimeoutMs: 60_000 }))
+  assert.equal(thrown.name, 'LlmError')
+  assert.equal(thrown.code, 'TRANSPORT')
+  assert.match(thrown.message, /读取失败/)
+})
+
+test('sseFrames: 已是 LlmError 的读取失败原样抛出，不被二次包装成「读取失败」', async () => {
+  // 例如带内错误帧（QUOTA / CONTEXT_WINDOW_EXCEEDED）已由分类器给出精确码，
+  // 若在这里被包成 TRANSPORT，就会把「不可重试的永久失败」变成「可重试」→ 白等 5 次退避。
+  // 必须用**真的** LlmError：生产代码判的是 `instanceof LlmError`，鸭子类型过不了这一关。
+  const inner = new LlmError('dsh-codebuddy: 网关错误 code=14018', 'QUOTA')
+  const { resp } = rejectingResp(inner)
+
+  const thrown = await catchFrom(sseFrames(resp, { idleTimeoutMs: 60_000 }))
+  assert.equal(thrown, inner, '必须原样抛出同一个错误对象')
+  assert.equal(thrown.code, 'QUOTA', '精确码不得被改写成 TRANSPORT')
+  assert.doesNotMatch(thrown.message, /读取失败/, '不得被包装')
+})
+
+test('sseFrames: 读取失败的原始错误通过 cause 保留（不丢 UND_ERR_BODY_TIMEOUT 线索）', async () => {
+  const raw = new TypeError('terminated')
+  raw.cause = { code: 'UND_ERR_BODY_TIMEOUT' }
+  const { resp } = rejectingResp(raw)
+
+  const thrown = await catchFrom(sseFrames(resp, { idleTimeoutMs: 60_000 }))
+  assert.equal(thrown.cause, raw, 'cause 必须是原始错误本身')
+  assert.equal(thrown.cause.cause.code, 'UND_ERR_BODY_TIMEOUT', '原始错误链要能一路查到 undici 的码')
+})
+
+test('sseFrames: 超时分支不受读取失败包装影响 —— 消息仍报「空闲超时」', async () => {
+  // 超时抛的本身已是 LlmError，走 `instanceof LlmError → 原样抛` 或根本不进 catch，
+  // 两种情形都不得变成「读取失败」。
+  const { resp } = observableReader({ never: true })
+  const thrown = await catchFrom(sseFrames(resp, { idleTimeoutMs: 150 }))
+  assert.equal(thrown.code, 'TRANSPORT')
+  assert.match(thrown.message, /空闲超时/, '超时必须是「空闲超时」')
+  assert.doesNotMatch(thrown.message, /读取失败/, '超时不得被读成读取失败')
+  assert.match(thrown.message, /150ms 无数据/)
 })
 
 // ── 3. 请求体组装 ──────────────────────────────────────────────

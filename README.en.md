@@ -167,6 +167,7 @@ Please read this before use.
 | **`cannot resolve credential "CODEBUDDY_API_KEY"`** | No key saved yet | Enter and save one in settings |
 | **`gateway returned an empty response`** | HTTP 200 with no content blocks | Retried automatically as `EMPTY_RESPONSE` |
 | **`response stream was truncated`** | Connection dropped mid-stream (proxy / gateway restart) | Retried as `TRANSPORT`; partial output is never committed as a complete answer |
+| **`stream idle timeout`** | Connected, but the gateway then sends **nothing at all** (silent proxy drop / gateway hang) | Aborts after 60 s of silence and retries as `TRANSPORT`. **It no longer waits ~5 minutes** (Node `fetch`'s default `bodyTimeout`) to throw a bare, non-retryable error |
 | **No CodeBuddy section after install** | Most likely installed with `link:` | Reinstall with `file:` or a manual copy (see Installation) |
 | **New models missing from the picker** | Discovery results are **session-scoped** | Click "Fetch models" again after restarting |
 | **`Cannot find module '@deepseek-ai/dsh-llm'`** | Plugin is not inside the profile's `node_modules` tree | Install with `file:` or a manual copy |
@@ -181,6 +182,15 @@ Please read this before use.
 3. **The deep-probe guess list goes stale.** The 38 guessed version IDs (e.g. `hy5`, `deepseek-v5`) age with each official release, and are **off by default**.
 4. **Model metadata (context window / max output) is statically declared.** Official changes require editing `cordis.patch.yml`; probing does not correct metadata for already-listed models.
 5. **One "Fetch models" issues real billable requests** (see the cost table above).
+6. **The stream idle timeout counts bytes, so keep-alives defeat it.** The watchdog measures silence *between*
+   received data. As long as the gateway keeps emitting **any** byte (e.g. an SSE comment `: keepalive`, a partial
+   frame), the timer resets — even if that response is effectively dead. Measured: no bytes at all → times out at
+   60 s; a keep-alive every 200 ms → never times out.
+   (Node `fetch`'s own 300 s `bodyTimeout` is fooled the same way, so this is the guard's scope, not a regression.)
+   If it spins forever while the gateway is sending keep-alives, interrupt and resend.
+7. **The failure ceiling is about 5.5 minutes.** A 60 s idle timeout × up to 5 retries plus backoff (~30 s total).
+   That is the trade for turning "always fails" into "usually self-heals": transient drops recover, and a truly
+   dead gateway waits slightly longer than before.
 
 ---
 
@@ -200,9 +210,22 @@ Please read this before use.
 npm test        # zero-network, zero-quota regression tests (node --test)
 ```
 
-Coverage: SSE parsing edge cases (CRLF split across chunks, multi-line `data:`, trailing frame), block lifecycle and index allocation, tool-call argument assembly, mutually-exclusive `usage` accounting, error classification (11102 / 11115 / 14018 / 401 / 5xx), stream-truncation guard, catalog merging (add / remove / scope), probe breaker and overall deadline, plus an end-to-end run against a **local mock gateway**.
+CI: every push and pull request runs the full suite (`.github/workflows/ci.yml`).
 
-> Tests must run inside an **installed copy** — `lib/index.js` resolves `@deepseek-ai/dsh-llm`, which only exists in the DSH profile. During development, sync `lib/` and `test/` into `<profile>/node_modules/dsh-codebuddy/` first.
+**Why this works in CI**: `lib/index.js` imports `@deepseek-ai/dsh-llm`, and that package **is published to npm** — CI installs it directly instead of a whole DSH installation:
+
+```bash
+npm i -D @deepseek-ai/dsh-llm@0.2.0-rc.2   # ⚠️ pin the version: this package's dist-tag `latest` is a stale 0.0.1-rc.1
+node --test "test/*.test.mjs"
+```
+
+> Note the glob (and keep the quotes) rather than `node --test test/`: Node's `--test` only accepts
+> **files/globs** as test entries. A bare directory name is treated as a CJS entry module, which fails
+> with `MODULE_NOT_FOUND` and is counted as one failing test.
+
+Coverage: SSE parsing edge cases (CRLF split across chunks, multi-line `data:`, trailing frame), block lifecycle and index allocation, tool-call argument assembly, mutually-exclusive `usage` accounting, error classification (11102 / 11115 / 14018 / 401 / 5xx), stream-truncation guard, **stream idle timeout**, catalog merging (add / remove / scope), probe breaker and overall deadline, **dual-copy model manifest consistency**, plus an end-to-end run against a **local mock gateway**.
+
+> When developing locally, run tests inside an **installed copy** — the `@deepseek-ai/dsh-llm` that `lib/index.js` resolves comes from the DSH profile. Sync `lib/` and `test/` into `<profile>/node_modules/dsh-codebuddy/` first. (CI does not need this step, since it installs the dependency from npm.)
 
 ---
 

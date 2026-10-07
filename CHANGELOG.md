@@ -3,6 +3,77 @@
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.0.3] - 2026-10-07
+
+修复两个会造成用户可见故障的缺陷，并补上回归防护与 CI。
+
+### 修复
+
+- **流式响应中途静默会干等约 5 分钟，且最终不重试。**
+  网关半路静默时（代理停止转发但不断开连接），`sseFrames` 会在 `reader.read()` 上死等，
+  直到 Node 内置 `fetch`（undici）的默认 `bodyTimeout` 触发 —— **实测 303 秒** —— 抛出一个**裸 `TypeError`**
+  （`cause.code = 'UND_ERR_BODY_TIMEOUT'`）。而宿主 `normalizeLlmFailure` → `harnessErrorCode` 只承认
+  `HarnessError` 子类，其余一律归 `"UNKNOWN"`，`UNKNOWN` 不在 `retryableCodes` 里 → **不重试**，
+  用户干等五分钟只看到一句无法理解的错误。
+
+  现在给每次 `read()` 加 **空闲超时**（`STREAM_IDLE_TIMEOUT_MS`，默认 60 秒；`sseFrames(resp, { idleTimeoutMs })`
+  可覆盖，测试用），超时即取消响应体并抛 `LlmError(..., 'TRANSPORT')` —— `TRANSPORT` 在重试策略里，会走正常重试。
+
+  注意是**空闲**超时不是总时长超时：每收到一块数据就重置计时，长回答不受影响。
+
+- **读取失败（TCP RST / 连接重置等）同样不重试。**
+  上一条修的是「静默」；但若 `read()` 直接抛出硬错误（如 `ECONNRESET`），抛出的仍是**裸 `TypeError`**，
+  同样被宿主归成 `UNKNOWN` → 不重试。现在把**非 `LlmError` 的读取失败**统一归一成
+  `LlmError(..., 'TRANSPORT', { cause })`，让重试策略接管；已是 `LlmError` 的原样透出，不二次包装。
+
+  > 用户主动取消**不会**因此被误重试：宿主 `adapterFailureChunk(error, options.signal)` 先判 `signal?.aborted`，
+  命中即走 `kind: 'aborted'` 分支。
+
+  > **这条守卫的边界（实测，勿误解）**：它按「两次收到数据之间是否静默」判定，因此**会被心跳骗过** ——
+  > 网关只要持续吐任意字节（SSE 注释 `: keepalive`、半截帧），计时就不断重置。
+  > 实测：完全不发字节 → 60 秒准时超时；每 200ms 发一次心跳 → 永不超时。
+  > Node `fetch` 自带的 300 秒 `bodyTimeout` 同样被心跳骗过，故这不是退步，而是适用范围。
+  > 另外失败等待的上界约为 **5.5 分钟**（60 秒 × 最多 5 次重试 + 退避约 30 秒）——
+  > 这是把「必然失败」换成「大概率自愈」的有意取舍。
+
+### 变更
+
+- `package.json` 的 `files` 加入 `"test"`。此前 npm 包不含 `test/`，而 `scripts.test` 指向
+  `test/index.test.mjs` —— **装完之后 `npm test` 必然报 `Could not find 'test/index.test.mjs'`**（实测退出码 1）。
+
+### 新增
+
+- **GitHub Actions CI**（`.github/workflows/ci.yml`）：push 到 main 与所有 PR 都跑全量测试。
+  **为什么这个仓库能在 CI 里跑测试**：`lib/index.js` 顶层 import `@deepseek-ai/dsh-llm`，该包此前被认为
+  「只在 DSH profile 里可解析」；实测它**已发布到 npm**（31 个版本），CI 里 `npm i -D @deepseek-ai/dsh-llm@0.2.0-rc.2`
+  即可，无需安装整个 DSH。
+  ⚠️ **必须钉版本号**：该包 dist-tags 的 `latest` 是 `0.0.1-rc.1`（很旧），不写版本会装错。
+
+- **模型清单一致性测试**。`cordis.patch.yml` 的 `models:` 与 `lib/index.js` 的 `FALLBACK_MODELS`
+  是同一份清单的两个副本，此前只靠注释里一句「改一边务必改另一边」，没有任何测试覆盖。
+  现在逐条断言 id 集合、`contextWindow`、`maxTokens`、`inputModalities` 一致，不一致时报出**具体模型与字段**。
+
+### 文档
+
+- **修正 `CHANGELOG.md` 中 v1.0.1 的两处失实描述**（本次修复的起因之一）。
+  原文写「全链路超时：**流式空闲看门狗**、单次探测 8s、探测总时限 60s、**测试连接 15s**」。对着代码逐条核实后：
+
+  | 声称 | 实况 |
+  |---|---|
+  | 流式空闲看门狗 | ❌ **当时并不存在**（全仓无实现，历史里也没有；v1.0.3 才真正补上） |
+  | 单次探测 8s | ✅ 属实（`PROBE_TIMEOUT_MS`） |
+  | 探测总时限 60s | ✅ 属实（`DISCOVER_DEADLINE_MS`） |
+  | 测试连接 15s | ❌ **实际是 8s**（用的是 `PROBE_TIMEOUT_MS`；`15000` 是 `DISCOVER_429_MAX_WAIT_MS`，与测试连接无关） |
+
+- `cordis.patch.yml` 的注释曾写「→ 改为官方配置：见下方 `compat.supportsDeveloperRole: false`」，
+  但**下方并不存在 compat 段**，而且 `compat.*` 是 `llm-pi-ai` 的协议漂移门禁字段，
+  DSH 核心与官方 `dsh-llm-deepseek` 都不消费它 —— 已改为说明本适配器在代码里直接规避
+  （只发 `system`、回传 `reasoning_content`），不存在对应配置项。
+
+> **这一节的教训**：发版前把 CHANGELOG 里**每个动词和数字**对着代码跑一遍。
+> 插件收录指南明写「描述会被当作对插件的声明并与代码核对，**夸大是让一个本来不错的插件被打回的主要原因**」——
+> 同一条标准不只适用于市场条目，也适用于仓库里每一份对外文字。
+
 ## [1.0.2] - 2026-10-05
 
 `peerDependencies` 预发布范围修正：让声明在**普通 semver 语义**下也成立。不改任何运行时代码。
@@ -64,7 +135,11 @@
   仅在一次**干净完成**的探测后整体替换该结论；限流 / 超时 / 取消的结果一律不写入，避免误删可用模型。
 - **目录结论按作用域隔离**（端点 + 密钥指纹）：更换端点或密钥会自动清空，旧端点的模型不再串味。
 - 设置页新增：删除密钥、清空探测缓存、深度探测开关、探测中取消、成本统计显示。
-- **全链路超时**：流式空闲看门狗、单次探测 8s、探测总时限 60s、测试连接 15s。
+- **全链路超时**：单次探测 8s、探测总时限 60s（`PROBE_TIMEOUT_MS` / `DISCOVER_DEADLINE_MS`），
+  以及设置页「测试连接」的同一个 8s 守卫。
+  > ⚠️ **本条曾被写错，2026-10-07 更正**：原文声称还包含「流式空闲看门狗」与「测试连接 15s」，
+  > 对着代码核实后两者都不成立（看门狗当时根本没有实现；测试连接用的是 8s 而非 15s）。
+  > 看门狗已于 [1.0.3] 真正补上，见该节。
 - **请求生命周期取消信号**：关闭页面即停止服务端探测（此前「取消」只停了进度条）。
 - **SSE 截断守卫**：未收到 `[DONE]` 或 `finish_reason` 时归一成 `TRANSPORT` 重试，
   不再把半截正文或半截工具参数当完整结果提交。
