@@ -3,6 +3,61 @@
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.0] - 2026-10-17
+
+推理档位从「两个硬编码 Set」改成「按模型的实测档位表」，并补齐 6 个漏收录的模型。
+
+### 为什么改
+
+旧实现只有 `EFFORT_OFF_MODELS` / `EFFORT_MAX_XHIGH_MODELS` 两个集合，
+产出的档位**永远是 off + high + max/xhigh 三档**：
+
+- **`low`/`medium` 从来没存在过** —— 而网关早就支持了（`deepseek-v4.1-flash`
+  官方声明就是 `low/high/max`）。用户看不到 Low 档，是因为插件根本没列。
+- 反过来，旧表还给 `hy4-preview`（只声明 high）、`step-5-preview`（只声明
+  low/medium/high）发了 `max` —— **发的是官方没声明的假档位**。
+- `low`/`medium` 即使被传入，`wireReasoningEffort` 也会把它压到顶档 —— 档位开关形同虚设。
+
+### 新增
+
+- **`MODEL_EFFORTS` 单表**（`lib/index.js`）：按模型声明 `off` / `tiers` / `forceEffort`。
+  `effortsForModel()` 从表生成档位（顺序 off → low → medium → high → xhigh → max），
+  `wireReasoningEffort()` 按表直映射，不再把所有档压到顶档。
+- **`test/efforts.test.mjs`**：17 条断言，覆盖三种模型类型的关键契约。
+  经变异测试验证：把实现改回「off 发字面量」「全压顶档」「给假 Off 模型加 off」
+  三种旧 bug，测试分别报 2/2/1 条失败 —— 不是空转的测试。
+- **6 个漏收录模型**（客户端 cli 清单有、网关实测可达）：
+  `fast-model` / `balanced-model` / `deep-model`（WorkBuddy 的快速/均衡/极致路由）、
+  `hy3-x`、`space-bunny`（五档全开的推理模型）、`kimi-k3-2`。
+
+### 修复
+
+- **`glm-5.1` 不传 `reasoning_effort` 会 400/11150**（"the reasoning effort value
+  is not supported by the current model"）—— 它是唯一**强制档位**的模型。
+  新增 `forceEffort: true`：选 Off 时降级为最低可用档（`low`），而不是省略字段。
+- **`kimi-k2.8-preview` / `kimi-k3-2` 不再提供 Off**：客户端声明
+  `canDisableThinking: true`，但硬题实测 omit 仍思考 1986~4093 tokens —— 是**假开关**。
+
+### 数据依据（三层校验，2026-10-17 全网关实测）
+
+1. **声明**：`acc-product-config-v3.json` 的 `reasoning.supportedEfforts` / `canDisableThinking`
+2. **接受**：直连 `copilot.tencent.com` 逐档实发，只有 HTTP 200 才收录
+3. **Off 有效性**：硬题 + `max_tokens=4096` 实测 `completion_thinking_tokens`，
+   只有「不传字段 → think 恒为 0」才算真 Off
+
+### 踩过的坑（写下来防止重复踩）
+
+- **HTTP 200 ≠ 档位有效**：glm/hy/step 一整批模型对**任何**字符串都回 200，
+  实测连 `"off"` / `"false"` / `"disabled"` / 乱码全部放行。网关根本不校验，
+  只能靠客户端声明做交集。
+- **`"off"` 字面量对 DeepSeek 是致命的**：三个模型实测全部 400/11133。
+  Off 只能实现为「不发字段」。
+- **`max_tokens=1` 的探针会被整批拒绝**（连 omit 都 400/11133），
+  最低可用 `max_tokens=16`。
+- **思考 token 数不能用来排档位强弱**：难题下 low/medium/high/max 全部撞
+  `max_tokens` 天花板（一模一样）；中等题下样本间方差 > 档位间差异。
+  能确定的是「档位被接受且计费倍率不同」，不能确定「low 比 high 思考少多少」。
+
 ## [1.0.3] - 2026-10-07
 
 修复两个会造成用户可见故障的缺陷，并补上回归防护与 CI。

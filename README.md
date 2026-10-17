@@ -108,13 +108,17 @@ dsh plugin --profile <你的profile> add github:<owner>/dsh-codebuddy
 
 ## 内置模型清单
 
-探测失败时的兜底清单（22 条，2026-10-01 实测校准，2026-10-04 修订 contextWindow/maxTokens）。`contextWindow` 统一为 1000000（本机既定偏好），网关硬上限实测为 1048576 tokens。
+探测失败时的兜底清单（28 条，2026-10-01 实测校准，2026-10-04 修订 contextWindow/maxTokens，2026-10-17 补 6 个模型）。`contextWindow` 统一为 1000000（本机既定偏好），网关硬上限实测为 1048576 tokens。
 
 | ID | 名称 | 上下文 | 最大输出 | 输入 |
 |---|---|---|---|---|
 | `auto` | Auto 自动路由 | 1000000 | 8192 | 文本 |
+| `fast-model` | 快速 (Fast) | 1000000 | 48000 | 文本 / 图片 |
+| `balanced-model` | 均衡 (Balanced) | 1000000 | 48000 | 文本 / 图片 |
+| `deep-model` | 极致 (Deep) | 1000000 | 48000 | 文本 / 图片 |
 | `hy4-preview` | Hy4 Preview (混元4) | 1000000 | 8192 | 文本 / 图片 |
 | `hy3` | Hy3 (混元3) | 1000000 | 8192 | 文本 / 图片 |
+| `hy3-x` | Hy3 X (混元3) | 1000000 | 64000 | 文本 / 图片 |
 | `hy3-preview` | Hy3 Preview | 1000000 | 8192 | 文本 |
 | `hy3-preview-agent` | Hy3 Preview Agent | 1000000 | 8192 | 文本 |
 | `deepseek-v4.1-flash` | DeepSeek V4.1 Flash | 1000000 | 128000 | 文本 / 图片 |
@@ -129,13 +133,42 @@ dsh plugin --profile <你的profile> add github:<owner>/dsh-codebuddy
 | `minimax-m3` | MiniMax M3 | 1000000 | 8192 | 文本 |
 | `minimax-m3-pay` | MiniMax M3 Pay | 1000000 | 8192 | 文本 |
 | `kimi-k3` | Kimi K3 | 1000000 | 8192 | 文本 |
+| `kimi-k3-2` | Kimi K3.2 | 1000000 | 32000 | 文本 / 图片 |
 | `kimi-k2.8-preview` | Kimi K2.8 Preview | 1000000 | 8192 | 文本 / 图片 |
 | `kimi-k2.7` | Kimi K2.7 | 1000000 | 8192 | 文本 / 图片 |
 | `kimi-k2.6` | Kimi K2.6 | 1000000 | 8192 | 文本 / 图片 |
 | `kimi-k2.5` | Kimi K2.5 | 1000000 | 8192 | 文本 / 图片 |
+| `space-bunny` | Space-Bunny (推理) | 1000000 | 128000 | 文本 / 图片 |
 | `step-5-preview` | Step-5 Preview (阶跃) | 1000000 | 8192 | 文本 / 图片 |
 
 > 模型清单会随官方变化。**清单是兜底的，「获取模型」探测的结果才是准的**（探测到的模型会在本次会话内直接进入模型选择器）。
+
+### 推理档位（思考深度）
+
+档位**按模型给**，不是所有模型都有全部档位 —— 每个模型的档位来自「官方声明 ∩ 网关实测接受」。
+模型选择器里会显示该模型实际支持的档位（Off / Low / Medium / High / XHigh / Max 的子集）。
+
+| 模型 | 档位 | Off 可关 |
+|---|---|---|
+| `deepseek-v4.1-flash` | Low / High / Max | ✅ |
+| `deepseek-v4-pro` | High / XHigh | ✅ |
+| `deepseek-v4-flash` | High / XHigh | ✅ |
+| `space-bunny` | Low / Medium / High / XHigh / Max | ❌ |
+| `glm-5.3` / `-flash` / `-flashx` | Low / High / Max | ❌ |
+| `glm-5.2` | High / XHigh | ✅ |
+| `glm-5.1` | Low / Medium / High / XHigh / Max | ❌（**强制档位**，不传会报错） |
+| `step-5-preview` | Low / Medium / High | ❌ |
+| `hy3` / `hy3-x` | Low / High | ❌ |
+| `hy4-preview` | High | ❌ |
+| `kimi-k2.8-preview` | Low / High / Max | ❌ |
+| `kimi-k3-2` | Low / High / XHigh | ❌ |
+
+几条容易踩的规则：
+
+- **Off = 不发 `reasoning_effort` 字段**，不是发 `"off"`。发字面量 `"off"` 在 DeepSeek 三个模型上实测全部 400/11133。
+- **网关对一批模型根本不校验档位**（glm/hy/step 对任何字符串都回 200），所以「能发出去」不等于「档位有效」——插件只列官方声明过的档位。
+- **`glm-5.1` 是唯一强制档位的模型**：不传 `reasoning_effort` 直接 400/11150，选 Off 会降级成最低档 `low`。
+- 没列出的模型走保守兜底（High / Max），不会退化成「没有档位」。
 
 ---
 

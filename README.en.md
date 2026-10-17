@@ -108,13 +108,17 @@ Built-in protections:
 
 ## Built-in model list
 
-Fallback list used when probing fails (22 entries, calibrated against the live gateway on 2026-10-01; contextWindow/maxTokens revised 2026-10-04). `contextWindow` is pinned to 1000000 (local preference); the gateway's hard cap was measured at 1048576 tokens.
+Fallback list used when probing fails (28 entries, calibrated against the live gateway on 2026-10-01; contextWindow/maxTokens revised 2026-10-04; 6 models added 2026-10-17). `contextWindow` is pinned to 1000000 (local preference); the gateway's hard cap was measured at 1048576 tokens.
 
 | ID | Name | Context | Max output | Input |
 |---|---|---|---|---|
 | `auto` | Auto router | 1000000 | 8192 | text |
+| `fast-model` | Fast | 1000000 | 48000 | text / image |
+| `balanced-model` | Balanced | 1000000 | 48000 | text / image |
+| `deep-model` | Deep | 1000000 | 48000 | text / image |
 | `hy4-preview` | Hy4 Preview | 1000000 | 8192 | text / image |
 | `hy3` | Hy3 | 1000000 | 8192 | text / image |
+| `hy3-x` | Hy3 X | 1000000 | 64000 | text / image |
 | `hy3-preview` | Hy3 Preview | 1000000 | 8192 | text |
 | `hy3-preview-agent` | Hy3 Preview Agent | 1000000 | 8192 | text |
 | `deepseek-v4.1-flash` | DeepSeek V4.1 Flash | 1000000 | 128000 | text / image |
@@ -129,13 +133,47 @@ Fallback list used when probing fails (22 entries, calibrated against the live g
 | `minimax-m3` | MiniMax M3 | 1000000 | 8192 | text |
 | `minimax-m3-pay` | MiniMax M3 Pay | 1000000 | 8192 | text |
 | `kimi-k3` | Kimi K3 | 1000000 | 8192 | text |
+| `kimi-k3-2` | Kimi K3.2 | 1000000 | 32000 | text / image |
 | `kimi-k2.8-preview` | Kimi K2.8 Preview | 1000000 | 8192 | text / image |
 | `kimi-k2.7` | Kimi K2.7 | 1000000 | 8192 | text / image |
 | `kimi-k2.6` | Kimi K2.6 | 1000000 | 8192 | text / image |
 | `kimi-k2.5` | Kimi K2.5 | 1000000 | 8192 | text / image |
+| `space-bunny` | Space-Bunny (reasoning) | 1000000 | 128000 | text / image |
 | `step-5-preview` | Step-5 Preview | 1000000 | 8192 | text / image |
 
 > The catalog drifts with official changes. **This list is only a fallback — the "Fetch models" probe is authoritative**, and discovered models enter the model picker for the current session.
+
+### Reasoning efforts (thinking depth)
+
+Efforts are **per-model**, not a single global ladder — each model's set comes from
+"officially declared ∩ empirically accepted by the gateway". The model picker shows
+exactly the efforts that model supports (a subset of Off / Low / Medium / High / XHigh / Max).
+
+| Model | Efforts | Off (can disable) |
+|---|---|---|
+| `deepseek-v4.1-flash` | Low / High / Max | ✅ |
+| `deepseek-v4-pro` | High / XHigh | ✅ |
+| `deepseek-v4-flash` | High / XHigh | ✅ |
+| `space-bunny` | Low / Medium / High / XHigh / Max | ❌ |
+| `glm-5.3` / `-flash` / `-flashx` | Low / High / Max | ❌ |
+| `glm-5.2` | High / XHigh | ✅ |
+| `glm-5.1` | Low / Medium / High / XHigh / Max | ❌ (**forced**, omitting the field errors) |
+| `step-5-preview` | Low / Medium / High | ❌ |
+| `hy3` / `hy3-x` | Low / High | ❌ |
+| `hy4-preview` | High | ❌ |
+| `kimi-k2.8-preview` | Low / High / Max | ❌ |
+| `kimi-k3-2` | Low / High / XHigh | ❌ |
+
+Rules that are easy to get wrong:
+
+- **Off means omitting `reasoning_effort`**, not sending `"off"`. Sending the literal
+  string `"off"` returned 400/11133 on all three DeepSeek models in testing.
+- **The gateway does not validate efforts for a whole class of models** (glm/hy/step accept
+  any string with HTTP 200). "It was accepted" therefore does not mean "it takes effect" —
+  the plugin lists only officially declared efforts.
+- **`glm-5.1` is the only model that requires an effort**: omitting it returns 400/11150.
+  Selecting Off downgrades to the lowest tier (`low`) instead of omitting the field.
+- Models not listed fall back conservatively (High / Max) rather than losing all efforts.
 
 ---
 

@@ -78,6 +78,23 @@
             name: Kimi K3
             contextWindow: 1000000
             maxTokens: 8192
+          # ── WorkBuddy 抽象档位路由（2026-10-17 补：客户端 cli 清单有、网关实测可达）──
+          # 不是具体模型，而是「快速/均衡/极致」三档路由名，实际后端由平台决定。
+          - id: fast-model
+            name: 快速 (Fast)
+            contextWindow: 1000000
+            maxTokens: 48000
+            inputModalities: [text, image]
+          - id: balanced-model
+            name: 均衡 (Balanced)
+            contextWindow: 1000000
+            maxTokens: 48000
+            inputModalities: [text, image]
+          - id: deep-model
+            name: 极致 (Deep)
+            contextWindow: 1000000
+            maxTokens: 48000
+            inputModalities: [text, image]
           # ── 官方 defaultLength 可查的模型 ──────────────────────────
           - id: hy4-preview
             name: Hy4 Preview (混元4)
@@ -88,6 +105,11 @@
             name: Hy3 (混元3)
             contextWindow: 1000000
             maxTokens: 8192
+            inputModalities: [text, image]
+          - id: hy3-x
+            name: Hy3 X (混元3)
+            contextWindow: 1000000
+            maxTokens: 64000
             inputModalities: [text, image]
           - id: deepseek-v4.1-flash
             name: DeepSeek V4.1 Flash
@@ -147,6 +169,11 @@
             contextWindow: 1000000
             maxTokens: 8192
             inputModalities: [text, image]
+          - id: kimi-k3-2
+            name: Kimi K3.2
+            contextWindow: 1000000
+            maxTokens: 32000
+            inputModalities: [text, image]
           - id: kimi-k2.7
             name: Kimi K2.7
             contextWindow: 1000000
@@ -161,6 +188,11 @@
             name: Kimi K2.5
             contextWindow: 1000000
             maxTokens: 8192
+            inputModalities: [text, image]
+          - id: space-bunny
+            name: Space-Bunny (推理)
+            contextWindow: 1000000
+            maxTokens: 128000
             inputModalities: [text, image]
           - id: step-5-preview
             name: Step-5 Preview (阶跃)
