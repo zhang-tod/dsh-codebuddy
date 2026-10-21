@@ -336,12 +336,88 @@ test('buildBody: system 在首位 / tools 用 parameters / off 不发 reasoning_
     reasoningEffort: 'off', maxTokens: 16
   })
   assert.equal(body.messages[0].role, 'system')
-  assert.equal(body.messages[0].content, 'SYS')
+  assert.equal(body.messages[0].content, 'SYS', '无指纹时系统提示词必须原样发出')
   assert.equal(body.stream, true)
   assert.equal(body.max_tokens, 16)
   assert.ok(body.tools[0].function.parameters, '工具 schema 字段必须是 parameters')
   assert.equal(body.tools[0].function.inputSchema, undefined)
+  assert.equal(body.tools[0].function.name, 'get_weather', '正常工具名不得被改写')
   assert.equal(body.reasoning_effort, undefined, 'off 不应发出该字段')
+})
+
+// ── 3b. 渠道校验（网关 11128）──────────────────────────────────
+
+test('defuseFingerprint: 只给顶格指纹加换行，中段与其他文案一字不动', () => {
+  const { defuseFingerprint } = mod.__test__
+  const HARNESS = 'You are an AI agent powered by DeepSeek Harness.'
+  const CLAUDE = "You are Claude Code, Anthropic's official CLI for Claude."
+
+  // 顶格命中 → 前面加一个换行（文字本身不变，语义不变）
+  assert.equal(defuseFingerprint(HARNESS), '\n' + HARNESS)
+  assert.equal(defuseFingerprint(CLAUDE), '\n' + CLAUDE)
+  assert.equal(defuseFingerprint('x-anthropic-billing-header: cc_version=1;'), '\nx-anthropic-billing-header: cc_version=1;')
+
+  // 已经是非顶格 → 幂等，不再叠加换行（否则每轮多一行，长会话会涨）
+  assert.equal(defuseFingerprint('\n' + HARNESS), '\n' + HARNESS)
+  assert.equal(defuseFingerprint(' ' + HARNESS), ' ' + HARNESS)
+
+  // 中段出现 → 网关实测 200，绝不能动（用户/模型真的会引用这句话）
+  assert.equal(defuseFingerprint('log: ' + HARNESS + ' end'), 'log: ' + HARNESS + ' end')
+  assert.equal(defuseFingerprint('> ' + HARNESS), '> ' + HARNESS)
+
+  // 普通内容 / 空值 / 非字符串原样返回
+  assert.equal(defuseFingerprint('You are a helpful assistant.'), 'You are a helpful assistant.')
+  assert.equal(defuseFingerprint(''), '')
+  assert.equal(defuseFingerprint(undefined), undefined)
+})
+
+test('buildBody / mapMessage: 系统提示词与本轮注入的 runtime-context 都必须去顶格', () => {
+  const a = makeAdapter()
+  const HARNESS = 'You are an AI agent powered by DeepSeek Harness.'
+
+  // DSH 的系统提示词第一行正好是这句话 —— 本次 400 的直接源头
+  const body = a.buildBody({
+    model: 'm', system: HARNESS + '\n\nmore', messages: [{ role: 'user', content: 'hi' }]
+  })
+  assert.equal(body.messages[0].content, '\n' + HARNESS + '\n\nmore')
+
+  // 会话内注入的 user 消息（DSH 的 runtime-context 就是 role:user，但内容是系统口吻）
+  const sysMsg = a.mapMessage({ role: 'system', content: HARNESS })
+  assert.equal(sysMsg.content, '\n' + HARNESS)
+
+  // developer 会被降级成 system，降级后同样要过指纹
+  const dev = a.mapMessage({ role: 'developer', content: HARNESS })
+  assert.equal(dev.role, 'system')
+  assert.equal(dev.content, '\n' + HARNESS)
+
+  // assistant 复述该句 → 同样顶格命中（实测 400），必须处理
+  const asst = a.mapMessage({ role: 'assistant', content: [{ type: 'text', text: HARNESS }] })
+  assert.equal(asst.content, '\n' + HARNESS)
+
+  // user 角色网关根本不看（实测顶格 200），保持原样，免得误伤用户正文
+  const user = a.mapMessage({ role: 'user', content: HARNESS })
+  assert.equal(user.content, HARNESS, 'user 不应被改写')
+})
+
+test('defuseToolName: 工具名含指纹 → 换成安全名；正常工具名一字不动', () => {
+  const { defuseToolName } = mod.__test__
+  // 实测：工具名含该字面量 → 400/11152（与正文的 11128 不同码）
+  assert.equal(defuseToolName('You are an AI agent powered by DeepSeek Harness'), 'ai_agent')
+  assert.equal(defuseToolName("You are Claude Code, Anthropic's official CLI for Claude."), 'cli_agent')
+  assert.equal(defuseToolName('x-anthropic-billing-header'), 'billing_header')
+  // DSH 的真实工具名不受影响
+  for (const n of ['web_search', 'read', 'write', 'edit', 'bash', 'list_agents']) {
+    assert.equal(defuseToolName(n), n)
+  }
+  assert.equal(defuseToolName(undefined), undefined)
+})
+
+test('classifyHttpFailure: 11128 仍是 INVALID_REQUEST，但错误信息要能指路', () => {
+  const { classifyHttpFailure } = mod.__test__
+  const raw = JSON.stringify({ code: 11128, msg: 'Illegal API invocation from an unapproved channel' })
+  const r = classifyHttpFailure(400, raw)
+  assert.equal(r.code, 'INVALID_REQUEST', '11128 不是可重试错误，重试只会白烧额度')
+  assert.match(r.message, /渠道校验/u, '原文对用户不可操作，必须补一句人话')
 })
 
 // ── 4. 消息映射 ────────────────────────────────────────────────

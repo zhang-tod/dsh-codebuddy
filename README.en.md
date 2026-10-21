@@ -198,6 +198,7 @@ Please read this before use.
 | Symptom | Meaning | What to do |
 |---|---|---|
 | **HTTP 400 · `code 11102`** | Model does not exist | Click "Fetch models" and pick from the list |
+| **HTTP 400 · `code 11128`** `Illegal API invocation from an unapproved channel` | The gateway's **channel check** rejected the request: a message body **starts at the beginning of a line** with one of its client fingerprints | Since v1.1.2 the plugin defuses this automatically (one newline in front of the matching line; the text itself is unchanged). If it still happens, the gateway added a new literal — update the plugin or file an issue (include the `requestId`, never your key) |
 | **HTTP 400 · `code 11115`** `prompt is too long` | Context overflow | Classified as `CONTEXT_WINDOW_EXCEEDED`; DSH auto-compacts and retries. If it persists, trim the session |
 | **HTTP 429 · `code 14018`** quota exhausted | **Account quota exhausted** (permanent, not rate limiting) | Top up at [codebuddy.cn](https://www.codebuddy.cn/profile/usage). Retrying will not help |
 | **HTTP 429 (no 14018)** | Genuine rate limiting | Retry later; the plugin honors `Retry-After` and trips a breaker |

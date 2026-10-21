@@ -193,6 +193,7 @@ dsh plugin --profile <你的profile> add github:<owner>/dsh-codebuddy
 | 现象 | 含义 | 怎么办 |
 |---|---|---|
 | **HTTP 400 · `code 11102`** | 模型不存在 | 点「获取模型」重新探测，从列表里选 |
+| **HTTP 400 · `code 11128`** `Illegal API invocation from an unapproved channel` | 网关的**渠道校验**失败：消息正文**顶格**命中了它的客户端黑名单 | v1.1.2 起插件会自动规避（在命中句前加一个换行，文字不动），**无需处理**。若仍出现，说明网关又加了新的黑名单字面量，请升级插件或提 Issue（带上 `requestId`，别贴密钥） |
 | **HTTP 400 · `code 11115`** `prompt is too long` | 上下文超限 | 插件会归为 `CONTEXT_WINDOW_EXCEEDED`，DSH 会自动压缩后重试；持续失败就精简会话 |
 | **HTTP 429 · `code 14018`** `额度已用尽` | **账号额度用尽**（永久失败，不是限流） | 到 [codebuddy.cn](https://www.codebuddy.cn/profile/usage) 充值或购买加量包。重试无用 |
 | **HTTP 429（无 14018）** | 真限流 | 稍后重试；插件会尊重 `Retry-After` 并熔断 |

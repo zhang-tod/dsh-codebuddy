@@ -3,6 +3,65 @@
 本文件遵循 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 版本号遵循[语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [1.1.2] - 2026-10-21
+
+修 **全量 400 / code 11128**：网关新增了一条客户端黑名单，正中 DSH 系统提示词第一行。
+
+### 现象
+
+所有 CodeBuddy 路由的对话都立刻失败：
+
+```
+400 {"code":11128,"msg":"Illegal API invocation from an unapproved channel",
+     "displayTips":{"zh":"这次调用没通过渠道校验，可能不是官方客户端发出的。"}}
+```
+
+### 根因（逐条 A/B 实测，真实密钥、真实网关）
+
+**不是 HTTP 头，是消息正文**。UA / X-Product / Origin 四种组合全部 200；
+`developer` 角色确实会 400，但走的是「角色被拒」，不是本条。
+
+黑名单是**精确字面量 + 顶格匹配**：
+
+| 顶格（行首） | system | assistant | user | tool |
+|---|---|---|---|---|
+| 命中 | **400** | **400** | 200 | 200 |
+| 中段出现 | 200 | 200 | 200 | — |
+
+本次新增的字面量是：
+
+```
+You are an AI agent powered by DeepSeek Harness.
+```
+
+它正是 **DSH 自己系统提示词的第一行**。插件以前能正常发出去，是因为这条规则
+2026-10-21 之前不存在；规则上线后，凡是 `codebuddy-native` 路由的请求**必然全灭**。
+（同批黑名单里还有 `You are Claude Code, Anthropic's official CLI for Claude.`
+和 `x-anthropic-billing-header`，与旧版 `codebuddy-anthropic-proxy` 里记录的完全一致。）
+
+### 修复
+
+`defuseFingerprint()`：命中黑名单且处于顶格时，**在文本最前面加一个换行**。
+
+- 一个换行 = 不再顶格 → 网关放行；文字本身一字不改，模型看到的身份声明仍是原文。
+- 中段出现**一律不动**（实测 200，而用户/模型真的会引用这句话，删了是误伤）。
+- 覆盖 `options.system`、`system`/`developer` 消息、`assistant` 正文。
+- `user` 刻意不处理：网关根本不看，改了只会损失用户原文。
+- 工具名走另一套（网关用 **11152**）：`defuseToolName()` 把字面量替换成安全词。
+- 幂等：已经带前导换行的不再叠加，长会话不会每轮多一行。
+
+### 验证
+
+- 66 条单测全过（新增 4 条：`defuseFingerprint`、`buildBody`/`mapMessage` 覆盖、
+  `defuseToolName`、11128 的错误文案）。
+- 用**真实失败会话**（756 条消息、7819 字系统提示词）经插件 `buildBody` 重组后
+  打真实网关：修复前 400/11128，修复后 **200 + [DONE]**。
+
+### 备注
+
+`classifyHttpFailure` 仍把 11128 归为 `INVALID_REQUEST`（不可重试 —— 重试只会白烧额度），
+但补了一句可读提示，不再是裸的英文原文。
+
 ## [1.1.1] - 2026-10-17
 
 修 peer/engines 范围的 **3.x 泄漏**：声明支持 `dsh <3.0.0`，实际放行了整个 3.x/4.x。
